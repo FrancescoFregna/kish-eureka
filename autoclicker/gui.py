@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 from typing import Dict, List, Optional, Sequence
 
 from .engine import (
@@ -11,11 +13,14 @@ from .engine import (
     AutomationAction,
     ClickAction,
     DragAction,
+    InputToolkit,
     KeyPressAction,
     MoveAction,
     ScrollAction,
     TypeTextAction,
     WaitAction,
+    deserialize_actions,
+    serialize_actions,
 )
 
 
@@ -45,12 +50,20 @@ class AutomationApp:
         self.action_type_var = tk.StringVar(value=self.ACTION_TYPES[0])
         self.interval_var = tk.StringVar(value="0.20")
         self.loop_var = tk.BooleanVar(value=False)
+        self.countdown_var = tk.StringVar(value="0.0")
         self.status_var = tk.StringVar(value="Sequenza inattiva")
 
         self._form_frames: Dict[str, tk.Widget] = {}
         self._form_vars: Dict[str, Dict[str, tk.Variable]] = {}
         self._text_widgets: Dict[str, tk.Text] = {}
         self._was_running = False
+        self._was_waiting = False
+        self._last_sequence_path: Optional[str] = None
+
+        try:
+            self._capture_toolkit = InputToolkit()
+        except Exception:  # pragma: no cover - dipende dall'ambiente utente
+            self._capture_toolkit = None
 
         self._create_styles()
         self._build_layout()
@@ -253,6 +266,8 @@ class AutomationApp:
         buttons.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(16, 0))
         for col in range(3):
             buttons.columnconfigure(col, weight=1)
+        buttons.rowconfigure(0, weight=1)
+        buttons.rowconfigure(1, weight=1)
 
         ttk.Button(
             buttons,
@@ -272,6 +287,19 @@ class AutomationApp:
             command=self._remove_selected,
             style="Ghost.TButton",
         ).grid(row=0, column=2, padx=4, sticky="ew")
+
+        ttk.Button(
+            buttons,
+            text="Carica sequenza...",
+            command=self._import_sequence,
+            style="Ghost.TButton",
+        ).grid(row=1, column=0, columnspan=2, padx=4, pady=(12, 0), sticky="ew")
+        ttk.Button(
+            buttons,
+            text="Salva sequenza...",
+            command=self._export_sequence,
+            style="Ghost.TButton",
+        ).grid(row=1, column=2, padx=4, pady=(12, 0), sticky="ew")
 
     def _build_editor_panel(self, parent: ttk.Frame) -> None:
         frame = ttk.LabelFrame(parent, text="Nuova azione", style="Card.TLabelframe", padding=16)
@@ -308,6 +336,7 @@ class AutomationApp:
         frame = ttk.LabelFrame(parent, text="Riproduzione", style="Card.TLabelframe", padding=16)
         frame.pack(fill="x")
         frame.columnconfigure(3, weight=1)
+        frame.columnconfigure(4, weight=1)
 
         ttk.Label(frame, text="Intervallo tra azioni (s)", style="Body.TLabel").grid(row=0, column=0, sticky="w")
         ttk.Entry(frame, textvariable=self.interval_var, style="Modern.TEntry", width=10).grid(
@@ -319,6 +348,13 @@ class AutomationApp:
             variable=self.loop_var,
             style="Toggle.TCheckbutton",
         ).grid(row=0, column=2, sticky="w")
+
+        ttk.Label(frame, text="Countdown iniziale (s)", style="Body.TLabel").grid(
+            row=0, column=3, sticky="w", padx=(24, 0)
+        )
+        ttk.Entry(frame, textvariable=self.countdown_var, style="Modern.TEntry", width=8).grid(
+            row=0, column=4, sticky="w", padx=(8, 0)
+        )
 
         self.start_btn = ttk.Button(
             frame,
@@ -362,32 +398,46 @@ class AutomationApp:
         self._form_frames["Click"] = frame
         self._form_vars["Click"] = vars
 
-        ttk.Label(frame, text="Coordinate (lascia vuoto per posizione attuale)", style="Body.TLabel").grid(
-            row=0, column=0, columnspan=2, sticky="w"
-        )
+        ttk.Label(
+            frame,
+            text="Coordinate (lascia vuoto per posizione attuale)",
+            style="Body.TLabel",
+        ).grid(row=0, column=0, columnspan=2, sticky="w")
         ttk.Entry(frame, textvariable=vars["x"], style="Modern.TEntry").grid(
             row=1, column=0, sticky="ew", pady=(4, 8), padx=(0, 8)
         )
         ttk.Entry(frame, textvariable=vars["y"], style="Modern.TEntry").grid(
             row=1, column=1, sticky="ew", pady=(4, 8)
         )
-        ttk.Label(frame, text="Pulsante", style="Body.TLabel").grid(row=2, column=0, sticky="w")
+        ttk.Button(
+            frame,
+            text="Usa posizione attuale",
+            command=lambda: self._capture_coordinates(
+                vars["x"], vars["y"], label="Coordinate click"
+            ),
+            style="Ghost.TButton",
+        ).grid(row=2, column=0, columnspan=2, sticky="ew")
+        ttk.Label(frame, text="Pulsante", style="Body.TLabel").grid(
+            row=3, column=0, sticky="w", pady=(8, 0)
+        )
         button_combo = ttk.Combobox(
             frame,
             textvariable=vars["button"],
             values=("left", "right", "middle"),
             state="readonly",
         )
-        button_combo.grid(row=2, column=1, sticky="ew")
-        ttk.Label(frame, text="Ripetizioni", style="Body.TLabel").grid(row=3, column=0, sticky="w", pady=(8, 0))
+        button_combo.grid(row=3, column=1, sticky="ew", pady=(8, 0))
+        ttk.Label(frame, text="Ripetizioni", style="Body.TLabel").grid(
+            row=4, column=0, sticky="w"
+        )
         ttk.Entry(frame, textvariable=vars["clicks"], style="Modern.TEntry").grid(
-            row=3, column=1, sticky="ew", pady=(8, 0)
+            row=4, column=1, sticky="ew"
         )
         ttk.Label(frame, text="Intervallo tra click (s)", style="Body.TLabel").grid(
-            row=4, column=0, sticky="w", pady=(8, 0)
+            row=5, column=0, sticky="w", pady=(8, 0)
         )
         ttk.Entry(frame, textvariable=vars["interval"], style="Modern.TEntry").grid(
-            row=4, column=1, sticky="ew", pady=(8, 0)
+            row=5, column=1, sticky="ew", pady=(8, 0)
         )
         frame.columnconfigure(0, weight=1)
         frame.columnconfigure(1, weight=1)
@@ -411,9 +461,19 @@ class AutomationApp:
         ttk.Entry(frame, textvariable=vars["y"], style="Modern.TEntry").grid(
             row=1, column=1, sticky="ew", pady=(4, 8)
         )
-        ttk.Label(frame, text="Durata movimento (s)", style="Body.TLabel").grid(row=2, column=0, sticky="w")
+        ttk.Button(
+            frame,
+            text="Usa posizione attuale",
+            command=lambda: self._capture_coordinates(
+                vars["x"], vars["y"], label="Sposta verso"
+            ),
+            style="Ghost.TButton",
+        ).grid(row=2, column=0, columnspan=2, sticky="ew")
+        ttk.Label(frame, text="Durata movimento (s)", style="Body.TLabel").grid(
+            row=3, column=0, sticky="w", pady=(8, 0)
+        )
         ttk.Entry(frame, textvariable=vars["duration"], style="Modern.TEntry").grid(
-            row=2, column=1, sticky="ew", pady=(4, 0)
+            row=3, column=1, sticky="ew", pady=(8, 0)
         )
         frame.columnconfigure(0, weight=1)
         frame.columnconfigure(1, weight=1)
@@ -440,29 +500,47 @@ class AutomationApp:
         ttk.Entry(frame, textvariable=vars["start_y"], style="Modern.TEntry").grid(
             row=1, column=1, sticky="ew", pady=(4, 8)
         )
+        ttk.Button(
+            frame,
+            text="Usa posizione attuale",
+            command=lambda: self._capture_coordinates(
+                vars["start_x"], vars["start_y"], label="Partenza trascinamento"
+            ),
+            style="Ghost.TButton",
+        ).grid(row=2, column=0, columnspan=2, sticky="ew")
         ttk.Label(frame, text="Punto di arrivo", style="Body.TLabel").grid(
-            row=2, column=0, columnspan=2, sticky="w"
+            row=3, column=0, columnspan=2, sticky="w", pady=(8, 0)
         )
         ttk.Entry(frame, textvariable=vars["end_x"], style="Modern.TEntry").grid(
-            row=3, column=0, sticky="ew", pady=(4, 8), padx=(0, 8)
+            row=4, column=0, sticky="ew", pady=(4, 8), padx=(0, 8)
         )
         ttk.Entry(frame, textvariable=vars["end_y"], style="Modern.TEntry").grid(
-            row=3, column=1, sticky="ew", pady=(4, 8)
+            row=4, column=1, sticky="ew", pady=(4, 8)
         )
+        ttk.Button(
+            frame,
+            text="Cattura arrivo",
+            command=lambda: self._capture_coordinates(
+                vars["end_x"], vars["end_y"], label="Arrivo trascinamento"
+            ),
+            style="Ghost.TButton",
+        ).grid(row=5, column=0, columnspan=2, sticky="ew")
         ttk.Label(frame, text="Durata trascinamento (s)", style="Body.TLabel").grid(
-            row=4, column=0, sticky="w"
+            row=6, column=0, sticky="w", pady=(8, 0)
         )
         ttk.Entry(frame, textvariable=vars["duration"], style="Modern.TEntry").grid(
-            row=4, column=1, sticky="ew", pady=(4, 0)
+            row=6, column=1, sticky="ew", pady=(8, 0)
         )
-        ttk.Label(frame, text="Pulsante", style="Body.TLabel").grid(row=5, column=0, sticky="w", pady=(8, 0))
+        ttk.Label(frame, text="Pulsante", style="Body.TLabel").grid(
+            row=7, column=0, sticky="w", pady=(8, 0)
+        )
         button_combo = ttk.Combobox(
             frame,
             textvariable=vars["button"],
             values=("left", "right", "middle"),
             state="readonly",
         )
-        button_combo.grid(row=5, column=1, sticky="ew", pady=(8, 0))
+        button_combo.grid(row=7, column=1, sticky="ew", pady=(8, 0))
         frame.columnconfigure(0, weight=1)
         frame.columnconfigure(1, weight=1)
 
@@ -694,6 +772,83 @@ class AutomationApp:
         for index in indices:
             self._select_index(index)
 
+    def _export_sequence(self) -> None:
+        if not self.actions:
+            messagebox.showinfo(
+                "Salvataggio sequenza",
+                "Aggiungi almeno un'azione prima di salvare",
+                parent=self.root,
+            )
+            return
+
+        initial = self._last_sequence_path or "sequenza.json"
+        path = filedialog.asksaveasfilename(
+            parent=self.root,
+            title="Salva sequenza",
+            initialfile=Path(initial).name,
+            defaultextension=".json",
+            filetypes=[
+                ("Sequenze Eureka Autoclicker", "*.json"),
+                ("Tutti i file", "*.*"),
+            ],
+        )
+        if not path:
+            return
+
+        try:
+            payload = serialize_actions(self.actions)
+            with open(path, "w", encoding="utf-8") as fp:
+                json.dump(payload, fp, ensure_ascii=False, indent=2)
+        except Exception as exc:  # pragma: no cover - dipende dall'I/O locale
+            messagebox.showerror(
+                "Salvataggio fallito",
+                f"Impossibile salvare la sequenza:\n{exc}",
+                parent=self.root,
+            )
+            return
+
+        self._last_sequence_path = path
+        self.status_var.set(f"Sequenza salvata in {Path(path).name}")
+
+    def _import_sequence(self) -> None:
+        path = filedialog.askopenfilename(
+            parent=self.root,
+            title="Carica sequenza",
+            defaultextension=".json",
+            filetypes=[
+                ("Sequenze Eureka Autoclicker", "*.json"),
+                ("Tutti i file", "*.*"),
+            ],
+        )
+        if not path:
+            return
+
+        try:
+            with open(path, "r", encoding="utf-8") as fp:
+                payload = json.load(fp)
+            actions = deserialize_actions(payload)
+        except ValueError as exc:
+            messagebox.showerror(
+                "Formato non valido",
+                f"Il file selezionato non contiene una sequenza valida:\n{exc}",
+                parent=self.root,
+            )
+            return
+        except Exception as exc:  # pragma: no cover - dipende dall'I/O locale
+            messagebox.showerror(
+                "Caricamento fallito",
+                f"Impossibile leggere il file:\n{exc}",
+                parent=self.root,
+            )
+            return
+
+        self.actions = actions
+        self._last_sequence_path = path
+        self._refresh_tree()
+        if self.actions:
+            self._select_index(0)
+        self.status_var.set(f"Sequenza caricata da {Path(path).name}")
+
     # ------------------------------------------------------------------
     # Controllo sequenza
 
@@ -711,14 +866,27 @@ class AutomationApp:
             messagebox.showerror("Valore non valido", str(exc), parent=self.root)
             return
 
+        try:
+            countdown = self._parse_float(
+                self.countdown_var.get(), "Countdown iniziale", minimum=0.0
+            )
+        except ValueError as exc:
+            messagebox.showerror("Valore non valido", str(exc), parent=self.root)
+            return
+
         loop = bool(self.loop_var.get())
         try:
-            self.engine.start(self.actions, interval=interval, loop=loop)
+            self.engine.start(self.actions, interval=interval, loop=loop, delay=countdown)
         except Exception as exc:  # pragma: no cover - dipende dall'ambiente
             messagebox.showerror("Impossibile avviare", str(exc), parent=self.root)
             return
 
-        self.status_var.set("Sequenza in esecuzione...")
+        if countdown > 0:
+            self.status_var.set(f"Countdown iniziale di {countdown:.2f}s avviato")
+            self._was_waiting = True
+        else:
+            self.status_var.set("Sequenza in esecuzione...")
+            self._was_waiting = False
         self.start_btn.state(["disabled"])
         self.stop_btn.state(["!disabled"])
 
@@ -727,19 +895,27 @@ class AutomationApp:
         self.status_var.set("Sequenza arrestata")
         self.start_btn.state(["!disabled"])
         self.stop_btn.state(["disabled"])
+        self._was_waiting = False
 
     def _poll_engine(self) -> None:
         running = self.engine.is_running()
-        if running != self._was_running:
-            self._was_running = running
-            if running:
+        waiting = self.engine.is_waiting()
+
+        if running:
+            self.start_btn.state(["disabled"])
+            self.stop_btn.state(["!disabled"])
+            if waiting and not self._was_waiting:
+                self.status_var.set("Countdown iniziale in corso...")
+            if not waiting and (self._was_waiting or not self._was_running):
                 self.status_var.set("Sequenza in esecuzione...")
-                self.start_btn.state(["disabled"])
-                self.stop_btn.state(["!disabled"])
-            else:
+        else:
+            if self._was_running:
                 self.status_var.set("Sequenza completata")
-                self.start_btn.state(["!disabled"])
-                self.stop_btn.state(["disabled"])
+            self.start_btn.state(["!disabled"])
+            self.stop_btn.state(["disabled"])
+
+        self._was_running = running
+        self._was_waiting = waiting
         self.root.after(200, self._poll_engine)
 
     def _on_close(self) -> None:
@@ -749,6 +925,31 @@ class AutomationApp:
 
     # ------------------------------------------------------------------
     # Utility di parsing
+
+    def _capture_coordinates(
+        self, x_var: tk.StringVar, y_var: tk.StringVar, *, label: str
+    ) -> None:
+        if self._capture_toolkit is None:
+            messagebox.showwarning(
+                "Cattura non disponibile",
+                "Installa pyautogui o pynput per usare la cattura della posizione",
+                parent=self.root,
+            )
+            return
+
+        position = self._capture_toolkit.get_position()
+        if position is None:
+            messagebox.showerror(
+                "Cattura non riuscita",
+                "Impossibile rilevare la posizione corrente del cursore",
+                parent=self.root,
+            )
+            return
+
+        x, y = position
+        x_var.set(str(x))
+        y_var.set(str(y))
+        self.status_var.set(f"{label}: {x}, {y}")
 
     def _parse_optional_int(self, value: str, field: str) -> Optional[int]:
         value = value.strip()

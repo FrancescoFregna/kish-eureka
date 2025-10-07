@@ -5,8 +5,8 @@ from __future__ import annotations
 import abc
 import threading
 import time
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Iterable, Optional, Sequence
+from dataclasses import asdict, dataclass, field
+from typing import TYPE_CHECKING, Dict, Iterable, Optional, Sequence, Type
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import pyautogui as PyAutoGuiModule
@@ -189,6 +189,22 @@ class InputToolkit:
             self._keyboard_controller.release(char)
             if interval > 0:
                 time.sleep(interval)
+
+    def get_position(self) -> Optional[tuple[int, int]]:
+        """Restituisce la posizione corrente del cursore."""
+
+        if self._pyautogui is not None:
+            try:  # pragma: no cover - dipende dall'ambiente grafico
+                x, y = self._pyautogui.position()
+            except Exception:
+                return None
+            return int(x), int(y)
+
+        if self._mouse_controller is not None:  # pragma: no cover - richiede backend pynput
+            x, y = self._mouse_controller.position
+            return int(x), int(y)
+
+        return None
 
     # ------------------------------------------------------------------
     # Helper privati
@@ -399,9 +415,11 @@ class ActionEngine:
 
     interval: float = 0.0
     loop: bool = False
+    start_delay: float = 0.0
     _thread: Optional[threading.Thread] = field(init=False, default=None, repr=False)
     _stop_event: threading.Event = field(init=False, default_factory=threading.Event, repr=False)
     _toolkit: InputToolkit = field(init=False, repr=False)
+    _waiting: bool = field(init=False, default=False, repr=False)
 
     def __post_init__(self) -> None:
         self._toolkit = InputToolkit()
@@ -412,6 +430,7 @@ class ActionEngine:
         *,
         interval: Optional[float] = None,
         loop: Optional[bool] = None,
+        delay: Optional[float] = None,
     ) -> None:
         if self._thread and self._thread.is_alive():
             raise RuntimeError("Il motore è già in esecuzione")
@@ -426,6 +445,10 @@ class ActionEngine:
             self.interval = interval
         if loop is not None:
             self.loop = loop
+        if delay is not None:
+            if delay < 0:
+                raise ValueError("Il ritardo iniziale deve essere maggiore o uguale a zero")
+            self.start_delay = delay
 
         self._stop_event.clear()
         self._thread = threading.Thread(
@@ -438,6 +461,13 @@ class ActionEngine:
     def _runner(self, actions: Sequence[AutomationAction]) -> None:
         ctx = ExecutionContext(self._toolkit, self._stop_event)
         try:
+            delay = max(0.0, float(self.start_delay))
+            if delay > 0:
+                self._waiting = True
+                ctx.wait(delay)
+                self._waiting = False
+                if self._stop_event.is_set():
+                    return
             while not self._stop_event.is_set():
                 for action in actions:
                     if self._stop_event.is_set():
@@ -453,15 +483,22 @@ class ActionEngine:
                 break
         finally:
             self._stop_event.set()
+            self._waiting = False
 
     def stop(self) -> None:
         self._stop_event.set()
         if self._thread:
             self._thread.join()
             self._thread = None
+        self._waiting = False
 
     def is_running(self) -> bool:
         return bool(self._thread and self._thread.is_alive())
+
+    def is_waiting(self) -> bool:
+        """Indica se il motore è in attesa del conto alla rovescia iniziale."""
+
+        return self.is_running() and self._waiting
 
 
 # ---------------------------------------------------------------------------
@@ -549,3 +586,63 @@ class ClickEngine:
 
     def is_running(self) -> bool:
         return bool(self._thread and self._thread.is_alive())
+
+
+# ---------------------------------------------------------------------------
+# Serializzazione delle sequenze
+
+
+_ACTION_REGISTRY: Dict[str, Type[AutomationAction]] = {
+    cls.__name__: cls
+    for cls in (
+        ClickAction,
+        MoveAction,
+        DragAction,
+        KeyPressAction,
+        TypeTextAction,
+        WaitAction,
+        ScrollAction,
+    )
+}
+
+
+def serialize_actions(actions: Sequence[AutomationAction]) -> list[dict]:
+    """Converte la sequenza di azioni in una rappresentazione serializzabile."""
+
+    payload = []
+    for action in actions:
+        payload.append({
+            "type": action.__class__.__name__,
+            "params": asdict(action),
+        })
+    return payload
+
+
+def deserialize_actions(data: Sequence[dict]) -> list[AutomationAction]:
+    """Ricostruisce le azioni serializzate dal formato prodotto da ``serialize_actions``."""
+
+    if isinstance(data, (str, bytes)) or not isinstance(data, Sequence):  # pragma: no cover - validazione difensiva
+        raise ValueError("Il contenuto importato non è una lista di azioni")
+
+    actions: list[AutomationAction] = []
+    for item in data:
+        if not isinstance(item, dict):
+            raise ValueError("Voce di azione non valida: atteso un oggetto")
+
+        type_name = item.get("type")
+        params = item.get("params", {})
+        if not isinstance(type_name, str):
+            raise ValueError("Voce di azione priva del campo 'type'")
+        if not isinstance(params, dict):
+            raise ValueError("Voce di azione con parametri non validi")
+
+        cls = _ACTION_REGISTRY.get(type_name)
+        if cls is None:
+            raise ValueError(f"Tipo di azione sconosciuto: {type_name}")
+
+        try:
+            actions.append(cls(**params))
+        except TypeError as exc:
+            raise ValueError(f"Parametri non validi per {type_name}: {exc}") from exc
+
+    return actions

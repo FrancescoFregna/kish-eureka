@@ -9,6 +9,9 @@ Kish Eureka Autoclicker è uno strumento di automazione scritto in Python pensat
 - **Motore riutilizzabile**: le azioni sono modellate come oggetti importabili; puoi orchestrare le stesse sequenze dalla tua applicazione Python senza utilizzare la GUI.
 - **Compatibilità multipiattaforma**: utilizza `pyautogui` come backend principale e `pynput` come fallback per garantire l'esecuzione sui principali sistemi operativi desktop.
 - **Modalità CLI classica**: per scenari veloci resta disponibile l'autoclicker tradizionale parametrizzabile da terminale.
+- **Countdown programmabile**: imposta un ritardo iniziale per preparare l'ambiente prima dell'avvio, sia in GUI sia con il flag `--countdown` da terminale.
+- **Libreria di sequenze**: salva e ricarica le automazioni in formato JSON per riutilizzarle e condividerle rapidamente.
+- **Cattura rapida delle coordinate**: popola i campi di click, spostamento e trascinamento con la posizione corrente del cursore in un solo gesto.
 
 ## Requisiti
 
@@ -35,9 +38,10 @@ python -m autoclicker --gui
 Dalla finestra principale puoi:
 
 1. Scegliere il tipo di azione (click, spostamento, trascinamento, tasti, digitazione, attesa, scroll).
-2. Compilare i parametri dedicati (coordinate, pulsante, durata, testo, ecc.).
-3. Aggiungere la voce alla sequenza, riordinare l'elenco e salvare eventuali modifiche.
-4. Avviare la riproduzione scegliendo intervallo fra le azioni e modalità loop.
+2. Compilare i parametri dedicati (coordinate, pulsante, durata, testo, ecc.) o catturarli in tempo reale con i nuovi pulsanti di acquisizione.
+3. Salvare e caricare sequenze JSON per creare una piccola libreria di automazioni.
+4. Aggiungere la voce alla sequenza, riordinare l'elenco e salvare eventuali modifiche.
+5. Avviare la riproduzione scegliendo intervallo fra le azioni, modalità loop e countdown iniziale.
 
 ### Linea di comando
 
@@ -53,6 +57,7 @@ Parametri disponibili:
 - `--button`: pulsante del mouse (`left`, `right`, `middle`).
 - `--count`: numero massimo di click da eseguire.
 - `--duration`: durata massima in secondi.
+- `--countdown`: ritardo iniziale in secondi prima di iniziare a cliccare.
 - `--gui`: apre l'interfaccia grafica invece della modalità CLI.
 
 Premi `Ctrl+C` per interrompere la modalità a tempo indeterminato.
@@ -78,3 +83,9 @@ Il motore accetterà automaticamente l'hardware disponibile (`pyautogui` oppure 
 ## Stato del progetto
 
 La versione corrente include l'interfaccia grafica completa, la CLI e il motore riutilizzabile. Sono benvenuti feedback, suggerimenti per nuove azioni e contributi di design o codice.
+
+## Idee implementate
+
+- Countdown iniziale per prepararsi all'avvio della sequenza senza correre.
+- Salvataggio e caricamento di sequenze in JSON per costruire una libreria personale.
+- Pulsanti di cattura rapida per riempire le coordinate direttamente dal cursore.

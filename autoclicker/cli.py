@@ -38,6 +38,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Durata massima in secondi",
     )
     parser.add_argument(
+        "--countdown",
+        type=float,
+        default=0.0,
+        help="Ritardo iniziale prima di iniziare i click (secondi)",
+    )
+    parser.add_argument(
         "--gui",
         action="store_true",
         help="Avvia l'interfaccia grafica moderna",
@@ -65,11 +71,19 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--count deve essere maggiore di zero")
     if args.duration is not None and args.duration <= 0:
         parser.error("--duration deve essere maggiore di zero")
+    if args.countdown < 0:
+        parser.error("--countdown deve essere maggiore o uguale a zero")
 
     if args.count is not None or args.duration is not None:
+        if args.countdown > 0:
+            print(f"Avvio tra {args.countdown:.2f}s...")
+            time.sleep(args.countdown)
         engine.run_blocking(count=args.count, duration=args.duration)
     else:
         print("Premi Ctrl+C per fermare l'autoclicker.")
+        if args.countdown > 0:
+            print(f"Avvio tra {args.countdown:.2f}s...")
+            time.sleep(args.countdown)
         engine.start()
         try:
             while engine.is_running():
