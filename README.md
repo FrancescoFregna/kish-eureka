@@ -4,14 +4,16 @@ Kish Eureka Autoclicker è uno strumento di automazione scritto in Python pensat
 
 ## Funzionalità principali
 
-- **Interfaccia moderna**: una dashboard scura e appagante, con componenti ottimizzati per schermi ad alta densità, per organizzare e riordinare le azioni con semplicità.
-- **Sequenze ricche**: supporto a click singoli o ripetuti, spostamenti del cursore, trascinamenti, pressioni di tasti (anche in combinazione), digitazione di testo, pause temporizzate e scroll verticale/orizzontale.
+- **Interfaccia moderna**: una dashboard scura e appagante, ora completamente scorrevole, con card animate e gradienti dinamici per mettere in risalto le informazioni chiave.
+- **Feedback immediato**: pulsanti con effetto "ripple" generato dal punto di click e animazioni di stato che rendono più leggibile l'avanzamento dell'automazione.
+- **Sequenze ricche**: supporto a click singoli o ripetuti, spostamenti del cursore, trascinamenti, pressioni di tasti (anche in combinazione tra lettere, numeri e modificatori), digitazione di testo, pause temporizzate e scroll verticale/orizzontale.
 - **Motore riutilizzabile**: le azioni sono modellate come oggetti importabili; puoi orchestrare le stesse sequenze dalla tua applicazione Python senza utilizzare la GUI.
 - **Compatibilità multipiattaforma**: utilizza `pyautogui` come backend principale e `pynput` come fallback per garantire l'esecuzione sui principali sistemi operativi desktop.
 - **Modalità CLI classica**: per scenari veloci resta disponibile l'autoclicker tradizionale parametrizzabile da terminale.
 - **Countdown programmabile**: imposta un ritardo iniziale per preparare l'ambiente prima dell'avvio, sia in GUI sia con il flag `--countdown` da terminale.
 - **Libreria di sequenze**: salva e ricarica le automazioni in formato JSON per riutilizzarle e condividerle rapidamente.
 - **Cattura rapida delle coordinate**: popola i campi di click, spostamento e trascinamento con la posizione corrente del cursore in un solo gesto.
+- **Tastiera estesa**: configura pressioni singole, sequenziali o combo come `ctrl+shift+s`, `win+d`, lettere, numeri e spazi direttamente dalla GUI.
 
 ## Requisiti
 
@@ -89,3 +91,4 @@ La versione corrente include l'interfaccia grafica completa, la CLI e il motore 
 - Countdown iniziale per prepararsi all'avvio della sequenza senza correre.
 - Salvataggio e caricamento di sequenze in JSON per costruire una libreria personale.
 - Pulsanti di cattura rapida per riempire le coordinate direttamente dal cursore.
+- Interfaccia scorrevole con animazioni di feedback (ripple e gradienti dinamici) per monitorare le azioni con chiarezza.
